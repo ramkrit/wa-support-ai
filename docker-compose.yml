@@ -1,0 +1,28 @@
+# =============================================================================
+# WA Support AI — Docker Compose
+# =============================================================================
+
+version: '3.9'
+
+services:
+  # Main application service
+  wa-support-ai:
+    build:
+      context: .
+      target: runner  # Use the lightweight runtime stage from the Dockerfile
+    ports:
+      - '3000:3000'   # Map host port 3000 → container port 3000
+    env_file:
+      - .env          # Load environment variables from .env file
+    restart: unless-stopped  # Auto-restart on crash, but not if manually stopped
+
+    volumes:
+      # Persist WhatsApp session data so you don't need to re-scan QR after restart
+      - bot_sessions:/app/.wwebjs_auth
+      # Cache Chromium profile data to speed up subsequent launches
+      - bot_cache:/app/.wwebjs_cache
+
+# Named volumes for data persistence across container rebuilds
+volumes:
+  bot_sessions:
+  bot_cache:
