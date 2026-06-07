@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>WA Support AI — Vector Space Visualization</title>
+  <style>
+    :root {
+      font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+      --bg: #0a0f0d;
+      --surface: rgba(10, 20, 18, 0.92);
+      --border: rgba(255,255,255,0.06);
+      --accent: #14b8a6;
+      --text: #ecfdf5;
+      --text-muted: #86a89c;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    header h1 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      background: linear-gradient(135deg, #ecfdf5, #14b8a6);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    header .actions { display: flex; gap: 8px; align-items: center; }
+    header button, header a button {
+      background: rgba(20,184,166,0.15);
+      color: var(--accent);
+      border: 1px solid rgba(20,184,166,0.3);
+      border-radius: 8px;
+      padding: 6px 12px;
+      font-size: 0.78rem;
+      cursor: pointer;
+    }
+    header button:hover { background: rgba(20,184,166,0.25); }
+    .stats {
+      padding: 12px 24px;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--border);
+    }
+    .canvas-container {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+    }
+    canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    .tooltip {
+      position: absolute;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 0.78rem;
+      max-width: 300px;
+      pointer-events: none;
+      display: none;
+      z-index: 10;
+      color: var(--text);
+      line-height: 1.4;
+    }
+    .tooltip .label { color: var(--accent); font-weight: 600; margin-bottom: 4px; }
+    .tooltip .content { color: var(--text-muted); }
+    .loading {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Vector Space — 2D Projection</h1>
+    <div class="actions">
+      <button onclick="refresh()">Refresh</button>
+      <a href="/" style="text-decoration:none"><button>Dashboard</button></a>
+    </div>
+  </header>
+  <div class="stats" id="stats">Loading...</div>
+  <div class="canvas-container">
+    <canvas id="canvas"></canvas>
+    <div class="tooltip" id="tooltip">
+      <div class="label" id="tooltipLabel"></div>
+      <div class="content" id="tooltipContent"></div>
+    </div>
+    <div class="loading" id="loading">Loading vector space data...</div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const tooltip = document.getElementById('tooltip');
+    const tooltipLabel = document.getElementById('tooltipLabel');
+    const tooltipContent = document.getElementById('tooltipContent');
+    const loading = document.getElementById('loading');
+    const statsEl = document.getElementById('stats');
+
+    let points = [];
+    let hoveredPoint = null;
+
+    function resize() {
+      const container = canvas.parentElement;
+      canvas.width = container.clientWidth * devicePixelRatio;
+      canvas.height = container.clientHeight * devicePixelRatio;
+      canvas.style.width = container.clientWidth + 'px';
+      canvas.style.height = container.clientHeight + 'px';
+      draw();
+    }
+
+    // Simple PCA-like dimensionality reduction (project to 2D using first 2 principal axes)
+    function reduceTo2D(vectors) {
+      if (vectors.length === 0) return [];
+      const dim = vectors[0].length;
+      const n = vectors.length;
+
+      // Compute mean
+      const mean = new Float64Array(dim);
+      for (const v of vectors) for (let i = 0; i < dim; i++) mean[i] += v[i];
+      for (let i = 0; i < dim; i++) mean[i] /= n;
+
+      // Center data
+      const centered = vectors.map(v => v.map((x, i) => x - mean[i]));
+
+      // Power iteration for top 2 components
+      function powerIteration(data, dims, existingAxis = null) {
+        let axis = new Float64Array(dims);
+        for (let i = 0; i < dims; i++) axis[i] = Math.random() - 0.5;
+
+        for (let iter = 0; iter < 50; iter++) {
+          let newAxis = new Float64Array(dims);
+          for (const row of data) {
+            let dot = 0;
+            for (let i = 0; i < dims; i++) dot += row[i] * axis[i];
+            for (let i = 0; i < dims; i++) newAxis[i] += dot * row[i];
+          }
+          // Remove existing axis component (deflation)
+          if (existingAxis) {
+            let proj = 0;
+            for (let i = 0; i < dims; i++) proj += newAxis[i] * existingAxis[i];
+            for (let i = 0; i < dims; i++) newAxis[i] -= proj * existingAxis[i];
+          }
+          let norm = 0;
+          for (let i = 0; i < dims; i++) norm += newAxis[i] * newAxis[i];
+          norm = Math.sqrt(norm) || 1;
+          for (let i = 0; i < dims; i++) axis[i] = newAxis[i] / norm;
+        }
+        return axis;
+      }
+
+      const pc1 = powerIteration(centered, dim);
+      const pc2 = powerIteration(centered, dim, pc1);
+
+      return centered.map(row => {
+        let x = 0, y = 0;
+        for (let i = 0; i < dim; i++) { x += row[i] * pc1[i]; y += row[i] * pc2[i]; }
+        return [x, y];
+      });
+    }
+
+    async function loadData() {
+      loading.style.display = 'flex';
+      try {
+        const res = await fetch('/embedding/visualize-data');
+        const data = await res.json();
+
+        if (data.chunks.length === 0) {
+          loading.textContent = 'No embedded chunks found. Upload documents and run embedding first.';
+          return;
+        }
+
+        const vectors = data.chunks.map(c => c.embedding);
+        const projected = reduceTo2D(vectors);
+
+        // Normalize to [0,1]
+        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+        for (const [x, y] of projected) {
+          minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+          minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+        }
+        const rangeX = maxX - minX || 1;
+        const rangeY = maxY - minY || 1;
+
+        points = data.chunks.map((chunk, i) => ({
+          x: (projected[i][0] - minX) / rangeX,
+          y: (projected[i][1] - minY) / rangeY,
+          filename: chunk.filename,
+          content: chunk.content.substring(0, 150),
+          chunkIndex: chunk.chunkIndex,
+          documentId: chunk.documentId,
+        }));
+
+        // Color by document
+        const docIds = [...new Set(points.map(p => p.documentId))];
+        const colors = ['#14b8a6','#f59e0b','#ef4444','#8b5cf6','#ec4899','#06b6d4','#84cc16','#f97316'];
+        points.forEach(p => { p.color = colors[docIds.indexOf(p.documentId) % colors.length]; });
+
+        statsEl.textContent = `${points.length} chunks from ${docIds.length} document(s) · ${vectors[0]?.length || 0} dimensions projected to 2D via PCA`;
+        loading.style.display = 'none';
+        draw();
+      } catch (e) {
+        loading.textContent = 'Error loading data: ' + e.message;
+      }
+    }
+
+    function draw() {
+      const w = canvas.width;
+      const h = canvas.height;
+      const padding = 40 * devicePixelRatio;
+
+      ctx.fillStyle = '#0a0f0d';
+      ctx.fillRect(0, 0, w, h);
+
+      if (points.length === 0) return;
+
+      // Draw grid
+      ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 10; i++) {
+        const x = padding + (w - 2 * padding) * (i / 10);
+        const y = padding + (h - 2 * padding) * (i / 10);
+        ctx.beginPath(); ctx.moveTo(x, padding); ctx.lineTo(x, h - padding); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(padding, y); ctx.lineTo(w - padding, y); ctx.stroke();
+      }
+
+      // Draw points
+      const r = 4 * devicePixelRatio;
+      for (const p of points) {
+        const px = padding + p.x * (w - 2 * padding);
+        const py = padding + p.y * (h - 2 * padding);
+        ctx.beginPath();
+        ctx.arc(px, py, p === hoveredPoint ? r * 2 : r, 0, Math.PI * 2);
+        ctx.fillStyle = p.color || '#14b8a6';
+        ctx.globalAlpha = p === hoveredPoint ? 1 : 0.7;
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    canvas.addEventListener('mousemove', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const mx = (e.clientX - rect.left) * devicePixelRatio;
+      const my = (e.clientY - rect.top) * devicePixelRatio;
+      const padding = 40 * devicePixelRatio;
+      const w = canvas.width;
+      const h = canvas.height;
+
+      let closest = null;
+      let minDist = 20 * devicePixelRatio;
+
+      for (const p of points) {
+        const px = padding + p.x * (w - 2 * padding);
+        const py = padding + p.y * (h - 2 * padding);
+        const dist = Math.hypot(mx - px, my - py);
+        if (dist < minDist) { minDist = dist; closest = p; }
+      }
+
+      if (closest !== hoveredPoint) {
+        hoveredPoint = closest;
+        draw();
+        if (closest) {
+          tooltip.style.display = 'block';
+          tooltipLabel.textContent = `${closest.filename} [chunk ${closest.chunkIndex}]`;
+          tooltipContent.textContent = closest.content + '...';
+        } else {
+          tooltip.style.display = 'none';
+        }
+      }
+
+      if (closest) {
+        tooltip.style.left = (e.clientX - rect.left + 12) + 'px';
+        tooltip.style.top = (e.clientY - rect.top - 10) + 'px';
+      }
+    });
+
+    canvas.addEventListener('mouseleave', () => {
+      hoveredPoint = null;
+      tooltip.style.display = 'none';
+      draw();
+    });
+
+    function refresh() { points = []; loadData(); }
+
+    window.addEventListener('resize', resize);
+    resize();
+    loadData();
+  </script>
+</body>
+</html>

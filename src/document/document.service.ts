@@ -22,6 +22,7 @@ import { ChunkingService, ChunkingOptions } from './chunking/chunking.service';
 import { loadPdf } from './loaders/pdf.loader';
 import { loadText } from './loaders/text.loader';
 import { SupportedMimeType } from './interfaces/document.interface';
+import { EmbeddingService } from '../embedding/embedding.service';
 import { DocumentChunk, DocumentChunkDocument } from '../database/schemas/document-chunk.schema';
 import { DocumentMetadata, DocumentMetadataDocument } from '../database/schemas/document-metadata.schema';
 
@@ -51,6 +52,7 @@ export class DocumentService {
     @InjectModel(DocumentMetadata.name)
     private readonly metadataModel: Model<DocumentMetadataDocument>,
     private readonly chunkingService: ChunkingService,
+    private readonly embeddingService: EmbeddingService,
   ) {}
 
   /**
@@ -99,6 +101,11 @@ export class DocumentService {
     }));
 
     await this.chunkModel.insertMany(chunkDocs);
+
+    // Step 5: Generate embeddings for the new chunks (async, non-blocking)
+    this.embeddingService.embedUnprocessedChunks().catch((err) => {
+      this.logger.warn(`[wa-support-ai] Embedding failed for ${file.originalname}: ${err.message}`);
+    });
 
     this.logger.log(
       `[wa-support-ai] Document ingested: ${file.originalname} → ${textChunks.length} chunks stored in MongoDB`,

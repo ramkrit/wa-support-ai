@@ -15,6 +15,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { DocumentService } from './document.service';
 import { DocumentController } from './document.controller';
 import { ChunkingService } from './chunking/chunking.service';
+import { EmbeddingModule } from '../embedding/embedding.module';
 import { DocumentChunk, DocumentChunkSchema } from '../database/schemas/document-chunk.schema';
 import { DocumentMetadata, DocumentMetadataSchema } from '../database/schemas/document-metadata.schema';
 
@@ -24,6 +25,7 @@ import { DocumentMetadata, DocumentMetadataSchema } from '../database/schemas/do
       { name: DocumentChunk.name, schema: DocumentChunkSchema },
       { name: DocumentMetadata.name, schema: DocumentMetadataSchema },
     ]),
+    EmbeddingModule,
   ],
   controllers: [DocumentController],
   providers: [DocumentService, ChunkingService],
