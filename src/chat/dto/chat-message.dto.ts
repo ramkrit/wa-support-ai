@@ -27,4 +27,7 @@ export class ChatResponseDto {
 
   @ApiProperty({ description: 'Total tokens used', required: false })
   tokensUsed?: number;
+
+  @ApiProperty({ description: 'Retrieved sources from the knowledge base', required: false })
+  sources?: any[];
 }

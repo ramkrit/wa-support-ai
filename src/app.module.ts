@@ -6,6 +6,7 @@ import { LlmModule } from './llm/llm.module';
 import { ChatModule } from './chat/chat.module';
 import { DocumentModule } from './document/document.module';
 import { EmbeddingModule } from './embedding/embedding.module';
+import { RagModule } from './rag/rag.module';
 import { DashboardController } from './frontend/dashboard.controller';
 
 @Module({
@@ -16,9 +17,10 @@ import { DashboardController } from './frontend/dashboard.controller';
     DatabaseModule,
     WaChannelModule,
     LlmModule,
-    ChatModule,
-    DocumentModule,
     EmbeddingModule,
+    DocumentModule,
+    RagModule,
+    ChatModule,
   ],
   controllers: [DashboardController],
 })

@@ -1,14 +1,15 @@
 /**
  * ChatService — wa-support-ai
  *
- * Manages conversation sessions (in-memory) and orchestrates
- * interactions with the LLM service. Each session maintains
- * its own message history for multi-turn conversations.
+ * Manages conversation sessions and orchestrates RAG-powered
+ * interactions. Each session maintains message history for
+ * multi-turn conversations with knowledge base context.
  *
  * @author ramkrit
  */
 import { Injectable, Logger } from '@nestjs/common';
 import { LlmService, ChatMessage, LlmResponse } from '../llm/llm.service';
+import { RagService, RagResult, RagSource } from '../rag/rag.service';
 
 export interface ConversationSession {
   id: string;
@@ -17,70 +18,111 @@ export interface ConversationSession {
   lastActiveAt: Date;
 }
 
+export interface ChatResponse {
+  content: string;
+  model: string;
+  tokensUsed?: number;
+  sources?: RagSource[];
+}
+
 @Injectable()
 export class ChatService {
   private readonly logger = new Logger(ChatService.name);
   private sessions = new Map<string, ConversationSession>();
 
-  private readonly systemPrompt: string = `You are a helpful AI assistant for wa-support-ai. 
-You answer questions clearly and concisely. If you don't know something, say so honestly.
-Keep responses focused and practical.`;
-
-  constructor(private readonly llmService: LlmService) {}
+  constructor(
+    private readonly llmService: LlmService,
+    private readonly ragService: RagService,
+  ) {}
 
   /**
-   * Sends a user message in a session and returns the LLM response.
-   * Creates a new session if one doesn't exist for the given ID.
+   * Sends a user message through the RAG pipeline.
+   * Retrieves relevant context from the knowledge base, then generates a response.
    */
-  async sendMessage(sessionId: string, userMessage: string): Promise<LlmResponse> {
+  async sendMessage(sessionId: string, userMessage: string): Promise<ChatResponse> {
     const session = this.getOrCreateSession(sessionId);
 
-    // Add user message to history
     session.messages.push({ role: 'user', content: userMessage });
     session.lastActiveAt = new Date();
 
     this.logger.log(`[wa-support-ai] Chat session ${sessionId} — user: ${userMessage.substring(0, 60)}`);
 
-    // Build the full message list with system prompt
-    const fullMessages: ChatMessage[] = [
-      { role: 'system', content: this.systemPrompt },
-      ...session.messages,
-    ];
-
-    // Get LLM response
-    const response = await this.llmService.chat(fullMessages);
+    // Use RAG pipeline (retrieves context + generates answer)
+    const ragResult = await this.ragService.query(userMessage, {
+      topK: 5,
+      scoreThreshold: 0.7,
+      history: session.messages.slice(0, -1), // Pass history without the current message
+    });
 
     // Store assistant reply in history
-    session.messages.push({ role: 'assistant', content: response.content });
+    session.messages.push({ role: 'assistant', content: ragResult.answer });
 
-    this.logger.debug(`[wa-support-ai] Chat session ${sessionId} — response generated (${response.tokensUsed ?? '?'} tokens)`);
+    this.logger.debug(
+      `[wa-support-ai] Chat session ${sessionId} — RAG response (${ragResult.sources.length} sources, ${ragResult.tokensUsed ?? '?'} tokens)`,
+    );
 
-    return response;
+    return {
+      content: ragResult.answer,
+      model: ragResult.model,
+      tokensUsed: ragResult.tokensUsed,
+      sources: ragResult.sources,
+    };
   }
 
   /**
-   * Streams the LLM response token by token.
-   * Stores the complete response in history once streaming finishes.
+   * Streams the RAG response token by token.
+   * Yields sources first, then content chunks.
    */
-  async *streamMessage(sessionId: string, userMessage: string): AsyncGenerator<string> {
+  async *streamMessage(
+    sessionId: string,
+    userMessage: string,
+  ): AsyncGenerator<{ type: 'sources'; data: RagSource[] } | { type: 'chunk'; data: string }> {
     const session = this.getOrCreateSession(sessionId);
 
     session.messages.push({ role: 'user', content: userMessage });
     session.lastActiveAt = new Date();
 
-    const fullMessages: ChatMessage[] = [
-      { role: 'system', content: this.systemPrompt },
-      ...session.messages,
-    ];
-
     let fullResponse = '';
-    for await (const chunk of this.llmService.chatStream(fullMessages)) {
-      fullResponse += chunk;
-      yield chunk;
+
+    for await (const event of this.ragService.queryStream(userMessage, {
+      topK: 5,
+      scoreThreshold: 0.7,
+      history: session.messages.slice(0, -1),
+    })) {
+      if (event.type === 'sources') {
+        yield event;
+      } else {
+        fullResponse += event.data;
+        yield event;
+      }
     }
 
     // Store complete response in history
     session.messages.push({ role: 'assistant', content: fullResponse });
+  }
+
+  /**
+   * Direct LLM chat (no RAG, no knowledge base).
+   * Useful for general questions that don't need document context.
+   */
+  async sendDirectMessage(sessionId: string, userMessage: string): Promise<LlmResponse> {
+    const session = this.getOrCreateSession(sessionId);
+
+    session.messages.push({ role: 'user', content: userMessage });
+    session.lastActiveAt = new Date();
+
+    const systemPrompt = `You are a helpful AI assistant for wa-support-ai.
+You answer questions clearly and concisely. If you don't know something, say so honestly.`;
+
+    const fullMessages: ChatMessage[] = [
+      { role: 'system', content: systemPrompt },
+      ...session.messages,
+    ];
+
+    const response = await this.llmService.chat(fullMessages);
+    session.messages.push({ role: 'assistant', content: response.content });
+
+    return response;
   }
 
   /** Returns the conversation history for a session */

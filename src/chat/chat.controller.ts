@@ -52,6 +52,7 @@ export class ChatController {
       model: response.model,
       sessionId,
       tokensUsed: response.tokensUsed,
+      sources: response.sources,
     };
   }
 
@@ -70,8 +71,12 @@ export class ChatController {
     res.setHeader('X-Session-Id', sessionId);
 
     try {
-      for await (const chunk of this.chatService.streamMessage(sessionId, dto.message)) {
-        res.write(`data: ${JSON.stringify({ content: chunk, sessionId })}\n\n`);
+      for await (const event of this.chatService.streamMessage(sessionId, dto.message)) {
+        if (event.type === 'sources') {
+          res.write(`data: ${JSON.stringify({ sources: event.data, sessionId })}\n\n`);
+        } else {
+          res.write(`data: ${JSON.stringify({ content: event.data, sessionId })}\n\n`);
+        }
       }
       res.write(`data: ${JSON.stringify({ done: true, sessionId })}\n\n`);
     } catch (error) {
