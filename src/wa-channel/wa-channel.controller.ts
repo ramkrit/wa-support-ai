@@ -13,7 +13,9 @@ import {
   Get,
   Headers,
   NotFoundException,
+  Param,
   Post,
+  Query,
   Res,
   Sse,
   UnauthorizedException,
@@ -22,6 +24,7 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiProperty,
+  ApiQuery,
   ApiTags,
   ApiProduces,
 } from '@nestjs/swagger';
@@ -29,9 +32,13 @@ import { Response } from 'express';
 import * as QRCode from 'qrcode';
 import { merge, Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
 import { SendMessageDto, SendMessageResponse } from './dto/send-message.dto';
 import { WaChannelService, WaClientStatus } from './wa-channel.service';
 import { ConfigService } from '@nestjs/config';
+import { ConversationLog, ConversationLogDocument } from '../database/schemas/conversation-log.schema';
+import { Ticket, TicketDocument } from '../database/schemas/ticket.schema';
 
 /** Swagger response schema for the status endpoint */
 class WaStatusResponse {
@@ -54,6 +61,10 @@ export class WaChannelController {
   constructor(
     private readonly waChannelService: WaChannelService,
     private readonly configService: ConfigService,
+    @InjectModel(ConversationLog.name)
+    private readonly conversationLogModel: Model<ConversationLogDocument>,
+    @InjectModel(Ticket.name)
+    private readonly ticketModel: Model<TicketDocument>,
   ) {
     this.sendingApiUser = this.configService.get<string>('WA_SEND_API_USER') ?? '';
     this.sendingApiPass = this.configService.get<string>('WA_SEND_API_PASS') ?? '';
@@ -122,6 +133,91 @@ export class WaChannelController {
     return merge(statusStream, qrStream).pipe(
       map((payload) => ({ data: JSON.stringify(payload) })),
     );
+  }
+
+  /** Get list of unique users who have chatted */
+  @Get('users')
+  @ApiOperation({ summary: 'Get all unique users who have interacted with the AI' })
+  async getUniqueUsers() {
+    const users = await this.conversationLogModel.aggregate([
+      {
+        $group: {
+          _id: '$phoneNumber',
+          contactName: { $last: '$contactName' },
+          messageCount: { $sum: 1 },
+          lastMessage: { $max: '$createdAt' },
+          firstMessage: { $min: '$createdAt' },
+        },
+      },
+      { $sort: { lastMessage: -1 } },
+      {
+        $project: {
+          _id: 0,
+          phoneNumber: '$_id',
+          contactName: 1,
+          messageCount: 1,
+          lastMessage: 1,
+          firstMessage: 1,
+        },
+      },
+    ]);
+    return { total: users.length, users };
+  }
+
+  /** Get conversation history for a specific phone number */
+  @Get('conversations/:phoneNumber')
+  @ApiOperation({ summary: 'Get conversation history for a user' })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  async getConversationHistory(
+    @Param('phoneNumber') phoneNumber: string,
+    @Query('limit') limit?: string,
+  ) {
+    const maxResults = parseInt(limit || '50', 10);
+    const logs = await this.conversationLogModel
+      .find({ phoneNumber })
+      .sort({ createdAt: -1 })
+      .limit(maxResults)
+      .lean()
+      .exec();
+
+    if (!logs.length) {
+      throw new NotFoundException(`No conversations found for ${phoneNumber}`);
+    }
+
+    return {
+      phoneNumber,
+      contactName: logs[0]?.contactName,
+      total: logs.length,
+      messages: logs.reverse().map((log) => ({
+        userMessage: log.userMessage,
+        aiResponse: log.aiResponse,
+        sources: log.retrievedContext,
+        tokensUsed: log.tokensUsed,
+        timestamp: log['createdAt'],
+      })),
+    };
+  }
+
+  /** Get all tickets, optionally filtered by phone number or status */
+  @Get('tickets')
+  @ApiOperation({ summary: 'Get all support tickets' })
+  @ApiQuery({ name: 'phoneNumber', required: false })
+  @ApiQuery({ name: 'status', required: false })
+  async getTickets(
+    @Query('phoneNumber') phoneNumber?: string,
+    @Query('status') status?: string,
+  ) {
+    const filter: Record<string, unknown> = {};
+    if (phoneNumber) filter.phoneNumber = phoneNumber;
+    if (status) filter.status = status;
+
+    const tickets = await this.ticketModel
+      .find(filter)
+      .sort({ createdAt: -1 })
+      .lean()
+      .exec();
+
+    return { total: tickets.length, tickets };
   }
 
   /** Validates Basic Auth header against configured sending credentials */
