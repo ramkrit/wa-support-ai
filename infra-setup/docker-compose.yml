@@ -1,0 +1,52 @@
+# =============================================================================
+# wa-support-ai — Infrastructure Services
+# =============================================================================
+# Run: docker compose -f infra-setup/docker-compose.yml up -d
+#
+# This spins up backing services for local development.
+# Later you can add Redis, Qdrant, etc. here.
+# =============================================================================
+
+version: '3.9'
+
+services:
+  # ── MongoDB ──────────────────────────────────────────────────────────────
+  mongodb:
+    image: mongo:7
+    container_name: wa-support-ai-mongo
+    restart: unless-stopped
+    ports:
+      - '27018:27017'    # Default MongoDB port
+    environment:
+      MONGO_INITDB_DATABASE: wa_support_ai
+      # Uncomment below to enable auth:
+      # MONGO_INITDB_ROOT_USERNAME: admin
+      # MONGO_INITDB_ROOT_PASSWORD: changeme
+    volumes:
+      - mongo_data:/data/db            # Persist data across restarts
+      - mongo_config:/data/configdb    # Persist config
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── (Placeholder) Redis — uncomment when ready ───────────────────────────
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: wa-support-ai-redis
+  #   restart: unless-stopped
+  #   ports:
+  #     - '6379:6379'
+  #   volumes:
+  #     - redis_data:/data
+  #   healthcheck:
+  #     test: ["CMD", "redis-cli", "ping"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+
+volumes:
+  mongo_data:
+  mongo_config:
+  # redis_data:

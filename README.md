@@ -14,7 +14,7 @@ A personal RAG-powered WhatsApp assistant built with NestJS. It maintains a head
 
 - **Runtime:** NestJS 11, TypeScript, Node.js
 - **WhatsApp:** whatsapp-web.js with LocalAuth session persistence
-- **Database:** MySQL via TypeORM (for metadata & conversation history)
+- **Database:** MongoDB via Mongoose (for chunks, conversations, RAG logs)
 - **RAG Pipeline:** Vector embeddings + vector store + LLM generation (planned)
 - **API Docs:** Swagger UI at `/api/docs`
 
@@ -46,13 +46,11 @@ Open `http://localhost:3000` to see the dashboard. Scan the QR code with WhatsAp
 | Variable | Description |
 |----------|-------------|
 | `PORT` | Server port (default: 3000) |
+| `OPENAI_API_KEY` | OpenAI API key for the LLM module |
+| `OPENAI_MODEL` | Model to use (default: gpt-4o-mini) |
+| `MONGODB_URI` | MongoDB connection string (default: mongodb://localhost:27017/wa_support_ai) |
 | `WA_SEND_API_USER` | Basic auth user for the send-message endpoint |
 | `WA_SEND_API_PASS` | Basic auth password for the send-message endpoint |
-| `DB_HOST` | MySQL host (default: localhost) |
-| `DB_PORT` | MySQL port (default: 3306) |
-| `DB_USER` | MySQL username |
-| `DB_PASSWORD` | MySQL password |
-| `DB_NAME` | MySQL database name (default: wa_support_ai) |
 
 See `.env.example` for the full template.
 

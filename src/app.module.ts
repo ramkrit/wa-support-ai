@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { DatabaseModule } from './database/database.module';
 import { WaChannelModule } from './wa-channel/wa-channel.module';
 import { LlmModule } from './llm/llm.module';
 import { ChatModule } from './chat/chat.module';
@@ -11,6 +12,7 @@ import { DashboardController } from './frontend/dashboard.controller';
     ConfigModule.forRoot({
       isGlobal: true,
     }),
+    DatabaseModule,
     WaChannelModule,
     LlmModule,
     ChatModule,

@@ -5,7 +5,7 @@
  * 1. Receive uploaded file
  * 2. Load/parse content based on file type
  * 3. Chunk the content into pieces
- * 4. Store document metadata + chunks in memory (later: DB + vector store)
+ * 4. Store document metadata + chunks in MongoDB
  *
  * @author ramkrit
  */
@@ -15,16 +15,15 @@ import {
   BadRequestException,
   NotFoundException,
 } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
 import { randomUUID } from 'crypto';
 import { ChunkingService, ChunkingOptions } from './chunking/chunking.service';
 import { loadPdf } from './loaders/pdf.loader';
 import { loadText } from './loaders/text.loader';
-import {
-  RawDocument,
-  DocumentChunk,
-  DocumentMetadata,
-  SupportedMimeType,
-} from './interfaces/document.interface';
+import { SupportedMimeType } from './interfaces/document.interface';
+import { DocumentChunk, DocumentChunkDocument } from '../database/schemas/document-chunk.schema';
+import { DocumentMetadata, DocumentMetadataDocument } from '../database/schemas/document-metadata.schema';
 
 /** Summary returned after ingestion */
 export interface IngestionResult {
@@ -39,10 +38,6 @@ export interface IngestionResult {
 export class DocumentService {
   private readonly logger = new Logger(DocumentService.name);
 
-  /** In-memory store — will be replaced with DB/vector store later */
-  private documents = new Map<string, RawDocument>();
-  private chunks = new Map<string, DocumentChunk[]>();
-
   private readonly supportedTypes: SupportedMimeType[] = [
     'application/pdf',
     'text/plain',
@@ -50,11 +45,16 @@ export class DocumentService {
     'text/markdown',
   ];
 
-  constructor(private readonly chunkingService: ChunkingService) {}
+  constructor(
+    @InjectModel(DocumentChunk.name)
+    private readonly chunkModel: Model<DocumentChunkDocument>,
+    @InjectModel(DocumentMetadata.name)
+    private readonly metadataModel: Model<DocumentMetadataDocument>,
+    private readonly chunkingService: ChunkingService,
+  ) {}
 
   /**
-   * Ingests a file: loads content, chunks it, and stores everything.
-   * This is the main entry point for document upload.
+   * Ingests a file: loads content, chunks it, and stores everything in MongoDB.
    */
   async ingest(
     file: Express.Multer.File,
@@ -72,93 +72,99 @@ export class DocumentService {
     // Step 1: Load content based on file type
     const content = await this.loadContent(file.buffer, mimeType);
 
-    // Step 2: Build metadata
-    const metadata: DocumentMetadata = {
-      source: 'upload',
+    // Step 2: Chunk the content
+    const textChunks = await this.chunkingService.chunkText(content, options);
+
+    // Step 3: Store metadata in MongoDB
+    await this.metadataModel.create({
+      documentId,
       filename: file.originalname,
       mimeType,
       fileSize: file.size,
-      uploadedAt: new Date().toISOString(),
-    };
+      chunkCount: textChunks.length,
+      contentLength: content.length,
+      status: 'completed',
+    });
 
-    // Step 3: Store raw document
-    const rawDoc: RawDocument = {
-      id: documentId,
-      filename: file.originalname,
-      mimeType,
-      content,
-      metadata,
-      uploadedAt: new Date(),
-    };
-    this.documents.set(documentId, rawDoc);
-
-    // Step 4: Chunk the content
-    const textChunks = await this.chunkingService.chunkText(content, options);
-
-    const docChunks: DocumentChunk[] = textChunks.map((chunk) => ({
-      id: `${documentId}_chunk_${chunk.index}`,
+    // Step 4: Store chunks in MongoDB
+    const chunkDocs = textChunks.map((chunk) => ({
       documentId,
       content: chunk.content,
-      metadata: {
-        ...metadata,
-        chunkIndex: chunk.index,
-        totalChunks: textChunks.length,
-      },
+      chunkIndex: chunk.index,
+      totalChunks: textChunks.length,
+      filename: file.originalname,
+      mimeType,
+      source: 'upload',
+      fileSize: file.size,
     }));
 
-    this.chunks.set(documentId, docChunks);
+    await this.chunkModel.insertMany(chunkDocs);
 
     this.logger.log(
-      `[wa-support-ai] Document ingested: ${file.originalname} → ${docChunks.length} chunks`,
+      `[wa-support-ai] Document ingested: ${file.originalname} → ${textChunks.length} chunks stored in MongoDB`,
     );
 
     return {
       documentId,
       filename: file.originalname,
       contentLength: content.length,
-      chunkCount: docChunks.length,
+      chunkCount: textChunks.length,
       processedAt: new Date().toISOString(),
     };
   }
 
-  /** Returns all stored documents (metadata only, no content) */
-  listDocuments() {
-    return Array.from(this.documents.values()).map((doc) => ({
-      id: doc.id,
+  /** Returns all stored documents (metadata only) */
+  async listDocuments() {
+    const docs = await this.metadataModel.find().sort({ createdAt: -1 }).exec();
+    return docs.map((doc) => ({
+      id: doc.documentId,
       filename: doc.filename,
       mimeType: doc.mimeType,
-      contentLength: doc.content.length,
-      chunkCount: this.chunks.get(doc.id)?.length ?? 0,
-      uploadedAt: doc.uploadedAt,
+      fileSize: doc.fileSize,
+      chunkCount: doc.chunkCount,
+      contentLength: doc.contentLength,
+      status: doc.status,
+      createdAt: doc['createdAt'],
     }));
   }
 
   /** Returns chunks for a specific document */
-  getChunks(documentId: string): DocumentChunk[] {
-    const chunks = this.chunks.get(documentId);
-    if (!chunks) {
+  async getChunks(documentId: string) {
+    const chunks = await this.chunkModel
+      .find({ documentId })
+      .sort({ chunkIndex: 1 })
+      .exec();
+
+    if (!chunks.length) {
       throw new NotFoundException(`[wa-support-ai] Document ${documentId} not found`);
     }
-    return chunks;
+
+    return chunks.map((chunk) => ({
+      id: chunk._id,
+      documentId: chunk.documentId,
+      content: chunk.content,
+      chunkIndex: chunk.chunkIndex,
+      totalChunks: chunk.totalChunks,
+      filename: chunk.filename,
+    }));
   }
 
   /** Returns all chunks across all documents (for vector store ingestion) */
-  getAllChunks(): DocumentChunk[] {
-    const all: DocumentChunk[] = [];
-    for (const chunks of this.chunks.values()) {
-      all.push(...chunks);
-    }
-    return all;
+  async getAllChunks() {
+    return this.chunkModel.find().sort({ documentId: 1, chunkIndex: 1 }).exec();
   }
 
   /** Deletes a document and its chunks */
-  deleteDocument(documentId: string): void {
-    if (!this.documents.has(documentId)) {
+  async deleteDocument(documentId: string) {
+    const metadata = await this.metadataModel.findOne({ documentId }).exec();
+    if (!metadata) {
       throw new NotFoundException(`[wa-support-ai] Document ${documentId} not found`);
     }
-    this.documents.delete(documentId);
-    this.chunks.delete(documentId);
-    this.logger.log(`[wa-support-ai] Document ${documentId} deleted`);
+
+    await this.chunkModel.deleteMany({ documentId }).exec();
+    await this.metadataModel.deleteOne({ documentId }).exec();
+
+    this.logger.log(`[wa-support-ai] Document ${documentId} deleted from MongoDB`);
   }
 
   // ── Private Helpers ───────────────────────────────────────────────────
