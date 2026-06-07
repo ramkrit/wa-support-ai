@@ -162,6 +162,10 @@ export class WaChannelService implements OnModuleInit {
       ? `\n\nEXISTING OPEN TICKETS FOR THIS CUSTOMER:\n${existingTickets.map((t) => `- [${t.ticketId}] ${t.type}: ${t.subject} (Status: ${t.status})`).join('\n')}\nDo NOT create a duplicate ticket if one already covers the same issue. Instead, inform the customer their existing ticket is being handled.`
       : '';
 
+    // Show "typing..." indicator while AI processes
+    const chat = await msg.getChat();
+    await chat.sendStateTyping();
+
     let aiResponse: string;
     let sources: Array<{ filename: string; chunkIndex: number; content: string; score: number }> = [];
     let tokensUsed: number | undefined;
@@ -213,8 +217,8 @@ export class WaChannelService implements OnModuleInit {
       tokensUsed,
     });
 
-    // Send response via WhatsApp
-    await msg.reply(aiResponse);
+    // Send response via WhatsApp (typing indicator auto-clears on send)
+    await chat.sendMessage(aiResponse);
     this.logger.log(`[wa-support-ai] Replied to ${contactName} (${phoneNumber})`);
   }
 
