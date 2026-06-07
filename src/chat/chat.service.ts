@@ -50,7 +50,7 @@ export class ChatService {
     // Use RAG pipeline (retrieves context + generates answer)
     const ragResult = await this.ragService.query(userMessage, {
       topK: 5,
-      scoreThreshold: 0.7,
+      scoreThreshold: 0.3,
       history: session.messages.slice(0, -1), // Pass history without the current message
     });
 
@@ -86,7 +86,7 @@ export class ChatService {
 
     for await (const event of this.ragService.queryStream(userMessage, {
       topK: 5,
-      scoreThreshold: 0.7,
+      scoreThreshold: 0.3,
       history: session.messages.slice(0, -1),
     })) {
       if (event.type === 'sources') {

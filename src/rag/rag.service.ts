@@ -37,7 +37,7 @@ export interface RagSource {
 export interface RagOptions {
   /** Number of top chunks to retrieve (default: 5) */
   topK?: number;
-  /** Minimum similarity score threshold (default: 0.7) */
+  /** Minimum similarity score threshold (default: 0.3) */
   scoreThreshold?: number;
   /** Additional conversation history for context */
   history?: ChatMessage[];
@@ -58,7 +58,7 @@ export class RagService {
    * Full RAG pipeline: query → retrieve → augment → generate
    */
   async query(userQuery: string, options: RagOptions = {}): Promise<RagResult> {
-    const { topK = 5, scoreThreshold = 0.7, history = [] } = options;
+    const { topK = 5, scoreThreshold = 0.3, history = [] } = options;
 
     this.logger.log(`[wa-support-ai] RAG query: "${userQuery.substring(0, 80)}"`);
 
@@ -124,11 +124,13 @@ export class RagService {
     scoreThreshold: number,
   ): Promise<RagSource[]> {
     try {
-      // Try MongoDB Atlas Vector Search first
-      return await this.atlasVectorSearch(queryVector, topK, scoreThreshold);
-    } catch {
-      // Fallback: manual cosine similarity (works with any MongoDB)
-      this.logger.debug('[wa-support-ai] Atlas vector search unavailable, using fallback cosine similarity');
+      const results = await this.atlasVectorSearch(queryVector, topK, scoreThreshold);
+      this.logger.log(`[wa-support-ai] Atlas vector search returned ${results.length} results`);
+      return results;
+    } catch (err) {
+      this.logger.warn(
+        `[wa-support-ai] Atlas vector search failed: ${err instanceof Error ? err.message : err}. Using fallback.`,
+      );
       return this.fallbackCosineSimilarity(queryVector, topK, scoreThreshold);
     }
   }
@@ -148,18 +150,13 @@ export class RagService {
           index: 'autoembed_index',
           path: 'embedding',
           queryVector,
-          numCandidates: topK * 10,
+          numCandidates: Math.max(topK * 20, 100),
           limit: topK,
         },
       },
       {
         $addFields: {
           score: { $meta: 'vectorSearchScore' },
-        },
-      },
-      {
-        $match: {
-          score: { $gte: scoreThreshold },
         },
       },
       {
@@ -174,16 +171,19 @@ export class RagService {
     ]);
 
     this.logger.log(
-      `[wa-support-ai] atlasVectorSearch ${results}`,
+      `[wa-support-ai] Atlas raw results: ${results.length}, scores: [${results.map((r) => r.score?.toFixed(3)).join(', ')}]`,
     );
 
-    return results.map((r) => ({
-      documentId: r.documentId,
-      filename: r.filename,
-      chunkIndex: r.chunkIndex,
-      content: r.content,
-      score: r.score,
-    }));
+    // Filter by threshold AFTER retrieval
+    return results
+      .filter((r) => r.score >= scoreThreshold)
+      .map((r) => ({
+        documentId: r.documentId,
+        filename: r.filename,
+        chunkIndex: r.chunkIndex,
+        content: r.content,
+        score: r.score,
+      }));
   }
 
   /**
