@@ -1,108 +1,299 @@
 # WA Support AI
 
-A personal RAG-powered WhatsApp assistant built with NestJS. It maintains a headless WhatsApp Web session, ingests your knowledge base into a vector store, and uses retrieval-augmented generation to answer incoming messages intelligently.
+An AI-powered WhatsApp customer support assistant built with NestJS and Retrieval-Augmented Generation (RAG). It maintains a persistent WhatsApp Web session, ingests your knowledge base into vector embeddings, and uses context-aware generation to answer customer queries intelligently via WhatsApp.
 
-## What it does
+Built for SetNGo Holidays — adaptable to any business.
 
-- Keeps a persistent WhatsApp Web session via `whatsapp-web.js` (Puppeteer-based)
-- Real-time dashboard showing connection status and QR code for authentication
-- Forwards incoming messages through a RAG pipeline: embed query → retrieve relevant chunks → generate an answer via LLM
-- REST API for sending messages programmatically
-- SSE stream for live status updates
+> **Disclaimer:** **This project uses only publicly available data from the SetNGo Holidays website as a demonstration example. It is not an official product of SetNGo Holidays. The system prompt and knowledge base can be replaced with any business's data to build a similar AI assistant.**
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        WhatsApp (Customer)                       │
+└────────────────────────────────┬────────────────────────────────┘
+                                 │
+                    ┌────────────▼────────────┐
+                    │   WA Channel Module     │
+                    │  (whatsapp-web.js)      │
+                    └────────────┬────────────┘
+                                 │
+              ┌──────────────────▼──────────────────┐
+              │           RAG Pipeline              │
+              │                                    │
+              │  ┌──────────┐  ┌───────────────┐  │
+              │  │ Embedding │→ │ Vector Search │  │
+              │  │ (OpenAI)  │  │  (MongoDB)    │  │
+              │  └──────────┘  └───────┬───────┘  │
+              │                        │          │
+              │  ┌─────────────────────▼───────┐  │
+              │  │     LLM (GPT-4o-mini)       │  │
+              │  │  + Retrieved Context        │  │
+              │  └─────────────────────────────┘  │
+              └────────────────────────────────────┘
+                                 │
+              ┌──────────────────▼──────────────────┐
+              │         MongoDB Atlas               │
+              │  ┌────────────┐ ┌───────────────┐  │
+              │  │  Chunks +  │ │ Conversations │  │
+              │  │ Embeddings │ │   & Tickets   │  │
+              │  └────────────┘ └───────────────┘  │
+              └────────────────────────────────────┘
+```
+
+## Features
+
+### Core
+- **RAG-powered responses** — answers grounded in your uploaded knowledge base with source citations
+- **WhatsApp integration** — persistent headless session via Puppeteer, QR-based auth, typing indicators
+- **Document ingestion** — upload PDF, TXT, CSV, or Markdown; auto-chunked and embedded
+- **MongoDB Atlas Vector Search** — native similarity search with cosine fallback for local dev
+- **Automated ticket system** — AI creates support tickets when it can't resolve issues
+- **Conversation logging** — full audit trail of every exchange with retrieved context and token usage
+
+### AI Agent Capabilities
+- Greets first-time customers automatically
+- Answers from knowledge base with source citations
+- Raises tickets: complaints, cancellations, update requests, callback requests
+- Deduplicates tickets — checks existing open tickets before creating new ones
+- Enforced boundaries — only responds to business-related queries
+
+### Developer Tools
+- **Web chat interface** — test the AI via browser at `/chat`
+- **3D vector space visualization** — explore embeddings at `/embedding/visualize-3d`
+- **2D vector space visualization** — scatter plot at `/embedding/visualize`
+- **Swagger API docs** — full REST documentation at `/api/docs`
+- **Real-time dashboard** — connection status + QR code at `/`
 
 ## Tech Stack
 
-- **Runtime:** NestJS 11, TypeScript, Node.js
-- **WhatsApp:** whatsapp-web.js with LocalAuth session persistence
-- **Database:** MongoDB via Mongoose (for chunks, conversations, RAG logs)
-- **RAG Pipeline:** Vector embeddings + vector store + LLM generation (planned)
-- **API Docs:** Swagger UI at `/api/docs`
+| Layer | Technology |
+|-------|-----------|
+| Framework | NestJS 11, TypeScript |
+| LLM | OpenAI GPT-4o-mini via LangChain |
+| Embeddings | OpenAI text-embedding-3-small (1536 dims) |
+| Vector Search | MongoDB Atlas $vectorSearch |
+| Database | MongoDB 7 / Mongoose |
+| WhatsApp | whatsapp-web.js + Puppeteer |
+| API Docs | Swagger UI |
+| Containerization | Docker (multi-stage build) |
 
 ## Getting Started
 
 ### Prerequisites
 
 - Node.js 20+
-- A machine where Chromium can run (Puppeteer dependency)
-- WhatsApp account to link
+- MongoDB (local Docker or Atlas free tier)
+- OpenAI API key
+- A machine where Chromium can run (for WhatsApp Web)
 
-### Setup
+### 1. Clone and install
 
 ```bash
-# Install dependencies
+git clone https://github.com/your-username/wa-support-ai.git
+cd wa-support-ai
 npm install
+```
 
-# Copy env template and fill in your values
+### 2. Start MongoDB (local development)
+
+```bash
+docker compose -f infra-setup/docker-compose.yml up -d
+```
+
+This starts MongoDB 7 on `localhost:27017` with Mongo Express GUI on `localhost:8081`.
+
+### 3. Configure environment
+
+```bash
 cp .env.example .env
+```
 
-# Start in dev mode
+Fill in your values:
+
+```env
+PORT=3000
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-4o-mini
+OPENAI_EMBEDDING_MODEL=text-embedding-3-small
+MONGODB_URI=mongodb://localhost:27017/wa_support_ai
+WA_SEND_API_USER=your-api-user
+WA_SEND_API_PASS=your-api-pass
+```
+
+### 4. Start the application
+
+```bash
 npm run start:dev
 ```
 
-Open `http://localhost:3000` to see the dashboard. Scan the QR code with WhatsApp to connect.
+### 5. Connect WhatsApp
 
-## Environment Variables
+Open `http://localhost:3000` and scan the QR code with your phone.
 
-| Variable | Description |
-|----------|-------------|
-| `PORT` | Server port (default: 3000) |
-| `OPENAI_API_KEY` | OpenAI API key for the LLM module |
-| `OPENAI_MODEL` | Model to use (default: gpt-4o-mini) |
-| `MONGODB_URI` | MongoDB connection string (default: mongodb://localhost:27017/wa_support_ai) |
-| `WA_SEND_API_USER` | Basic auth user for the send-message endpoint |
-| `WA_SEND_API_PASS` | Basic auth password for the send-message endpoint |
+### 6. Ingest knowledge base
 
-See `.env.example` for the full template.
+Upload documents via the API or Swagger UI:
 
-## API Endpoints
+```bash
+curl -X POST http://localhost:3000/document/upload \
+  -F "file=@your-document.pdf"
+```
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/` | Live dashboard with connection status and QR |
-| GET | `/wa-channel/qr` | PNG image of the current QR code |
-| GET | `/wa-channel/status` | JSON status (`connected`, `awaiting_scan`, `disconnected`) |
-| POST | `/wa-channel/send-message` | Send a message (Basic Auth required) |
-| GET | `/wa-channel/events` | SSE stream for real-time status + QR updates |
-| GET | `/api/docs` | Swagger documentation |
+Embeddings are generated automatically after upload.
+
+### 7. (Atlas only) Create vector search index
+
+In MongoDB Atlas → Search → Create Index:
+
+```json
+{
+  "type": "vectorSearch",
+  "fields": [{
+    "path": "embedding",
+    "numDimensions": 1536,
+    "similarity": "cosine",
+    "type": "vector"
+  }]
+}
+```
+
+Index name: `autoembed_index` on collection `document_chunks`.
+
+## API Reference
+
+### WhatsApp Channel
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/wa-channel/status` | Connection status |
+| GET | `/wa-channel/qr` | QR code as PNG |
+| GET | `/wa-channel/events` | SSE stream (status + QR) |
+| POST | `/wa-channel/send-message` | Send outbound message (auth required) |
+| GET | `/wa-channel/users` | List unique users |
+| GET | `/wa-channel/conversations/:phone` | Conversation history |
+| GET | `/wa-channel/tickets` | List all tickets |
+
+### Documents
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/document/upload` | Upload and ingest a document |
+| GET | `/document` | List all documents |
+| GET | `/document/:id/chunks` | View chunks |
+| DELETE | `/document/:id` | Delete a document |
+
+### Embeddings
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/embedding/process` | Embed all unprocessed chunks |
+| POST | `/embedding/query` | Embed text (for testing) |
+| GET | `/embedding/visualize` | 2D visualization |
+| GET | `/embedding/visualize-3d` | 3D visualization |
+
+### Chat (Browser)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/chat` | Chat UI |
+| POST | `/chat/send` | Send message (full response) |
+| POST | `/chat/stream` | Send message (SSE stream) |
+
+Full Swagger documentation available at `/api/docs`.
 
 ## Project Structure
 
 ```
 src/
-├── main.ts                  # App bootstrap + Swagger setup
-├── app.module.ts            # Root module
-├── config/                  # Configuration & data source
-├── frontend/                # Dashboard controller (serves HTML)
-├── wa-channel/              # WhatsApp client, controller, DTOs
-├── database/                # TypeORM migrations & entities
-├── rag/                     # (planned) RAG orchestration
-├── embedding/               # (planned) Vector encoding service
-├── vector-store/            # (planned) Vector storage & retrieval
-├── document/                # (planned) Document ingestion & chunking
-├── llm/                     # (planned) LLM provider integration
-└── conversation/            # (planned) Chat session memory
+├── main.ts                          # Bootstrap + Swagger
+├── app.module.ts                    # Root module
+├── database/
+│   ├── database.module.ts           # MongoDB connection
+│   └── schemas/                     # Mongoose schemas
+│       ├── document-chunk.schema.ts
+│       ├── document-metadata.schema.ts
+│       ├── conversation-log.schema.ts
+│       └── ticket.schema.ts
+├── wa-channel/                      # WhatsApp transport + AI handler
+│   ├── wa-channel.module.ts
+│   ├── wa-channel.service.ts        # Message handling, RAG integration, tickets
+│   └── wa-channel.controller.ts     # REST + SSE endpoints
+├── rag/                             # RAG orchestration
+│   ├── rag.module.ts
+│   └── rag.service.ts              # Query → Embed → Search → Generate
+├── llm/                             # LLM provider (OpenAI via LangChain)
+│   ├── llm.module.ts
+│   └── llm.service.ts
+├── embedding/                       # Vector embedding generation
+│   ├── embedding.module.ts
+│   ├── embedding.service.ts
+│   ├── embedding.controller.ts
+│   └── pages/                       # Visualization UIs
+├── document/                        # Document ingestion pipeline
+│   ├── document.module.ts
+│   ├── document.service.ts
+│   ├── document.controller.ts
+│   ├── chunking/                    # Text splitting
+│   └── loaders/                     # PDF, TXT, CSV parsers
+├── chat/                            # Web chat interface
+│   ├── chat.module.ts
+│   ├── chat.service.ts
+│   ├── chat.controller.ts
+│   └── pages/
+└── frontend/
+    └── dashboard.controller.ts      # Main dashboard UI
 ```
 
-## Scripts
+## MongoDB Collections
 
-| Command | Description |
-|---------|-------------|
-| `npm run start:dev` | Dev mode with watch |
-| `npm run build` | Compile TypeScript |
-| `npm run start:prod` | Run compiled build |
-| `npm run lint` | ESLint with auto-fix |
-| `npm run test` | Run unit tests |
+| Collection | Purpose |
+|-----------|---------|
+| `document_chunks` | Chunked text with embedding vectors |
+| `documents` | Document metadata (filename, size, status) |
+| `conversation_logs` | Full message logs with RAG context |
+| `tickets` | Support tickets (complaints, cancellations, etc.) |
 
 ## Deployment
 
-The project includes Docker support. See `Dockerfile` and `.dockerignore` for container builds.
+### Docker
 
 ```bash
 docker compose up -d --build
 ```
 
-The WhatsApp session persists across restarts via Docker volumes.
+The app image uses a multi-stage build with Alpine + Chromium. WhatsApp sessions persist via Docker volumes.
+
+### Environment
+
+For production, use MongoDB Atlas for vector search and set `NODE_ENV=production`.
+
+## Scripts
+
+| Command | Description |
+|---------|-------------|
+| `npm run start:dev` | Development mode with hot reload |
+| `npm run build` | Compile TypeScript |
+| `npm run start:prod` | Run compiled build |
+| `npm run lint` | ESLint with auto-fix |
+| `npm run test` | Run unit tests |
+
+## Message Flow
+
+```
+Customer sends WhatsApp message
+  → Typing indicator shown
+  → Load conversation history (last 10 messages)
+  → Check existing open tickets (dedup)
+  → Embed user query (OpenAI)
+  → Vector search for relevant chunks (MongoDB Atlas)
+  → Build augmented prompt (system prompt + context + history)
+  → LLM generates response (GPT-4o-mini)
+  → If response contains ticket JSON → create ticket in DB
+  → Log conversation (user msg + AI response + sources + tokens)
+  → Send response to customer
+```
 
 ## License
 
-UNLICENSED — personal project.
+UNLICENSED — private project.
