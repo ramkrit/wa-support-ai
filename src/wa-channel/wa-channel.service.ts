@@ -143,7 +143,7 @@ export class WaChannelService implements OnModuleInit {
     if (msg.from === 'status@broadcast') return;
 
     const contact = await msg.getContact();
-    const phoneNumber = contact.number ?? msg.from ?? 'unknown';
+    const phoneNumber = contact.id?.user || msg.from?.split('@')[0] || 'unknown';
     const contactName = contact.pushname || contact.name || 'Customer';
     const userMessage = msg.body.trim();
 
