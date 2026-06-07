@@ -1,6 +1,36 @@
-# WA Support AI
+# WA Support AI - RAG
 
-An AI-powered WhatsApp customer support assistant built with NestJS and Retrieval-Augmented Generation (RAG). It maintains a persistent WhatsApp Web session, ingests your knowledge base into vector embeddings, and uses context-aware generation to answer customer queries intelligently via WhatsApp.
+**A Retrieval-Augmented Generation (RAG) powered WhatsApp AI Assistant**
+
+An AI-powered WhatsApp customer support assistant built with NestJS and RAG. It maintains a persistent WhatsApp Web session, ingests your knowledge base into vector embeddings, and uses context-aware generation to answer customer queries intelligently via WhatsApp.
+
+## What is RAG?
+
+**Retrieval-Augmented Generation (RAG)** is an AI architecture that combines information retrieval with text generation to produce accurate, grounded responses. Instead of relying solely on the LLM's training data, RAG retrieves relevant documents from your knowledge base at query time and feeds them as context to the model.
+
+```
+┌────────────────── RAG Pipeline ──────────────────┐
+│                                                  │
+│  1. RETRIEVE                                     │
+│     User query → Embed → Vector search           │
+│     Find the most relevant knowledge chunks      │
+│                                                  │
+│  2. AUGMENT                                      │
+│     Inject retrieved context into the prompt     │
+│     "Answer using ONLY this information..."      │
+│                                                  │
+│  3. GENERATE                                     │
+│     LLM produces a grounded, cited response      │
+│     based on actual knowledge base data          │
+│                                                  │
+└──────────────────────────────────────────────────┘
+```
+
+**Why RAG over fine-tuning?**
+- No model retraining needed — just upload documents
+- Always up-to-date — add/remove knowledge at any time
+- Transparent — responses cite exact sources
+- Cost-effective — works with any LLM (GPT-4o-mini, Claude, etc.)
 
 Built for SetNGo Holidays — adaptable to any business.
 
