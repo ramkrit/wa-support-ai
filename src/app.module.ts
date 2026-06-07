@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { WaChannelModule } from './wa-channel/wa-channel.module';
 import { LlmModule } from './llm/llm.module';
 import { ChatModule } from './chat/chat.module';
+import { DocumentModule } from './document/document.module';
 import { DashboardController } from './frontend/dashboard.controller';
 
 @Module({
@@ -13,6 +14,7 @@ import { DashboardController } from './frontend/dashboard.controller';
     WaChannelModule,
     LlmModule,
     ChatModule,
+    DocumentModule,
   ],
   controllers: [DashboardController],
 })
