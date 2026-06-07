@@ -184,6 +184,45 @@ export class DashboardController {
         color: var(--text-muted);
         font-size: 0.75rem;
       }
+
+      .nav-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 12px;
+      }
+
+      .nav-link {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 14px 18px;
+        border-radius: 12px;
+        background: rgba(20, 184, 166, 0.06);
+        border: 1px solid var(--border);
+        color: var(--text-primary);
+        text-decoration: none;
+        font-size: 0.85rem;
+        transition: all 0.2s;
+      }
+
+      .nav-link:hover {
+        background: rgba(20, 184, 166, 0.15);
+        border-color: rgba(20, 184, 166, 0.3);
+      }
+
+      .nav-link .icon {
+        font-size: 1.2rem;
+      }
+
+      .nav-link .label {
+        font-weight: 500;
+      }
+
+      .nav-link .desc {
+        font-size: 0.72rem;
+        color: var(--text-muted);
+        margin-top: 2px;
+      }
     </style>
   </head>
   <body data-status="disconnected">
@@ -214,6 +253,32 @@ export class DashboardController {
         <p class="qr-hint">
           Open WhatsApp on your phone → Linked Devices → Scan this code
         </p>
+      </section>
+
+      <section class="card">
+        <div class="nav-grid">
+          <a href="/chat" class="nav-link">
+            <span class="icon">💬</span>
+            <div>
+              <div class="label">Chat Interface</div>
+              <div class="desc">Talk to the AI directly via browser</div>
+            </div>
+          </a>
+          <a href="/embedding/visualize-3d" class="nav-link">
+            <span class="icon">🧊</span>
+            <div>
+              <div class="label">Vector Space 3D</div>
+              <div class="desc">Visualize embeddings in 3D</div>
+            </div>
+          </a>
+          <a href="/embedding/visualize" class="nav-link">
+            <span class="icon">📊</span>
+            <div>
+              <div class="label">Vector Space 2D</div>
+              <div class="desc">2D scatter plot of chunks</div>
+            </div>
+          </a>
+        </div>
       </section>
     </main>
 
