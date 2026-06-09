@@ -36,6 +36,12 @@ Built for SetNGo Holidays — adaptable to any business.
 
 > **Disclaimer:** **This project uses only publicly available data from the SetNGo Holidays website as a demonstration example. It is not an official product of SetNGo Holidays. The system prompt and knowledge base can be replaced with any business's data to build a similar AI assistant.**
 
+## Screenshots
+
+| Dashboard | 3D Vector Space | 2D Vector Space |
+|-----------|-----------------|-----------------|
+| ![Dashboard](docs/images/dashboard.png) | ![3D Vector Space](docs/images/vector-space-3d.png) | ![2D Vector Space](docs/images/vector-space-2d.png) |
+
 ## Architecture
 
 ```
