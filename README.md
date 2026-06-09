@@ -38,9 +38,14 @@ Built for SetNGo Holidays — adaptable to any business.
 
 ## Screenshots
 
-| Dashboard | 3D Vector Space | 2D Vector Space |
-|-----------|-----------------|-----------------|
-| ![Dashboard](docs/images/dashboard.png) | ![3D Vector Space](docs/images/vector-space-3d.png) | ![2D Vector Space](docs/images/vector-space-2d.png) |
+**Dashboard**
+![Dashboard](docs/images/dashboard.png)
+
+**3D Vector Space Visualization**
+![3D Vector Space](docs/images/vector-space-3d.png)
+
+**2D Vector Space Visualization**
+![2D Vector Space](docs/images/vector-space-2d.png)
 
 ## Architecture
 
