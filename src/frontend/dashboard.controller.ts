@@ -144,10 +144,13 @@ export class DashboardController {
 
       .qr-frame {
         width: min(280px, 65vw);
-        padding: 14px;
+        padding: 16px;
         border-radius: 16px;
         background: #ffffff;
         box-shadow: 0 0 24px var(--accent-glow);
+        display: flex;
+        align-items: center;
+        justify-content: center;
       }
 
       canvas {
@@ -155,6 +158,7 @@ export class DashboardController {
         height: auto;
         display: block;
         border-radius: 8px;
+        max-width: 250px;
       }
 
       .qr-hint {
@@ -248,7 +252,7 @@ export class DashboardController {
 
       <section class="card qr-section hidden" id="qr-card">
         <div class="qr-frame">
-          <canvas id="qr-canvas" width="280" height="280"></canvas>
+          <canvas id="qr-canvas" width="250" height="250"></canvas>
         </div>
         <p class="qr-hint">
           Open WhatsApp on your phone → Linked Devices → Scan this code
@@ -325,8 +329,8 @@ export class DashboardController {
         }
         try {
           await window.QRCode.toCanvas(qrCanvas, qr, {
-            width: qrCanvas.width,
-            margin: 1,
+            width: 250,
+            margin: 2,
             color: { dark: '#134e4a', light: '#ffffff' },
           });
         } catch (e) {
